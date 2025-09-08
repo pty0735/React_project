@@ -18,7 +18,7 @@ app.use(bodyParser.json());
 // MySQL 연결
 const db = mysql.createPool({
   host: process.env.DB_HOST,
-  port: process.env.DB_PORT,
+  port: process.env.DB_PORT || 3306,
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
@@ -46,29 +46,33 @@ const authenticateToken = (req, res, next) => {
 };
 
 // Gemini AI API 호출 함수
-// Gemini AI API 호출 함수 (수정된 버전)
-async function generateRoutineWithGemini(goal, category, targetDate, userInfo) {
+async function generateRoutineWithGemini(
+  goal,
+  category,
+  targetDate,
+  userInfo,
+  totalDays
+) {
   const prompt = `
   사용자 정보:
   - 목표: ${goal}
   - 카테고리: ${category}
   - 목표 달성 날짜: ${targetDate}
   - 사용자 나이: ${userInfo.age}세
+  - 총 계획 기간: ${totalDays}일
   
-  위 정보를 바탕으로 실용적이고 달성 가능한 일일 루틴을 자세하게 생성해주세요.
-  그리고 **을 사용하지 마세요.
+  위 정보를 바탕으로 ${totalDays}일간의 실용적이고 달성 가능한 일일 루틴을 자세하게 생성해주세요.
+  그리고 **과 ##을 사용하지 마세요.
   다음 형식으로 응답해주세요:
   
   제목: [목표에 맞는 루틴 제목]
   
-  주간 계획:
-  1. 월요일: [구체적인 활동] (예상 소요시간: X분)
-  2. 화요일: [구체적인 활동] (예상 소요시간: X분)
-  3. 수요일: [구체적인 활동] (예상 소요시간: X분)
-  4. 목요일: [구체적인 활동] (예상 소요시간: X분)
-  5. 금요일: [구체적인 활동] (예상 소요시간: X분)
-  6. 토요일: [구체적인 활동] (예상 소요시간: X분)
-  7. 일요일: [구체적인 활동] (예상 소요시간: X분)
+  일일 계획:
+  1. 1일차: [구체적인 활동] (예상 소요시간: X분)
+  2. 2일차: [구체적인 활동] (예상 소요시간: X분)
+  3. 3일차: [구체적인 활동] (예상 소요시간: X분)
+  ...
+  ${totalDays}. ${totalDays}일차: [구체적인 활동] (예상 소요시간: X분)
   
   추가 조언:
   [목표 달성을 위한 실용적인 조언]
@@ -92,71 +96,94 @@ async function generateRoutineWithGemini(goal, category, targetDate, userInfo) {
       }
     );
 
-    // HTTP 응답 상태 확인
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Gemini API HTTP 오류:", response.status, errorText);
-      throw new Error(`Gemini API HTTP 오류: ${response.status}`);
-    }
-
     const data = await response.json();
-
-    // 응답 구조 로깅 (디버깅용)
-    console.log("Gemini API 응답:", JSON.stringify(data, null, 2));
-
-    // 응답 구조 검증
-    if (!data) {
-      throw new Error("Gemini API에서 빈 응답을 받았습니다");
-    }
-
-    if (
-      !data.candidates ||
-      !Array.isArray(data.candidates) ||
-      data.candidates.length === 0
-    ) {
-      console.error("candidates 배열이 없거나 비어있습니다:", data);
-      throw new Error("Gemini API 응답에서 candidates를 찾을 수 없습니다");
-    }
-
-    const candidate = data.candidates[0];
-    if (
-      !candidate ||
-      !candidate.content ||
-      !candidate.content.parts ||
-      candidate.content.parts.length === 0
-    ) {
-      console.error("유효하지 않은 candidate 구조:", candidate);
-      throw new Error("Gemini API 응답의 content 구조가 유효하지 않습니다");
-    }
-
-    const generatedText = candidate.content.parts[0].text;
-    if (!generatedText) {
-      throw new Error("Gemini API에서 빈 텍스트를 받았습니다");
-    }
-
-    return generatedText;
+    return data.candidates[0].content.parts[0].text;
   } catch (error) {
     console.error("Gemini API 오류:", error);
-
-    // API 키 확인 (보안상 일부만 로깅)
-    if (!process.env.GEMINI_API_KEY) {
-      console.error("GEMINI_API_KEY 환경변수가 설정되지 않았습니다");
-      throw new Error("API 키가 설정되지 않았습니다");
-    } else {
-      console.log(
-        "API 키가 설정되어 있습니다 (앞 10자):",
-        process.env.GEMINI_API_KEY.substring(0, 10) + "..."
-      );
-    }
-
-    // 네트워크 오류인지 확인
-    if (error.message.includes("fetch")) {
-      throw new Error("네트워크 연결 오류가 발생했습니다");
-    }
-
-    // 기본 오류 메시지로 대체하거나 재전송
-    throw new Error("AI 루틴 생성에 실패했습니다: " + error.message);
+    throw new Error("AI 루틴 생성에 실패했습니다");
   }
+}
+
+// AI 루틴 텍스트를 파싱하여 개별 루틴으로 변환하는 함수 (수정된 버전)
+function parseAIRoutineToDaily(aiRoutine, goalId, targetDate) {
+  const routines = [];
+
+  console.log("원본 AI 루틴:", aiRoutine);
+
+  // 오늘 날짜부터 목표 날짜까지 계산
+  const today = new Date();
+  today.setHours(0, 0, 0, 0); // 시간을 00:00:00으로 설정
+
+  const target = new Date(targetDate);
+  target.setHours(0, 0, 0, 0);
+
+  // 총 일수 계산 (오늘부터 목표일까지)
+  const totalDays = Math.ceil((target - today) / (1000 * 60 * 60 * 24)) + 1;
+
+  console.log(`총 ${totalDays}일간의 루틴을 생성합니다.`);
+
+  // 각 일차별 루틴 추출
+  for (let day = 1; day <= totalDays; day++) {
+    // 더 유연한 정규식 패턴 사용
+    const patterns = [
+      new RegExp(
+        `${day}\\. ${day}일차:\\s*([^(\\n]+)\\(예상 소요시간:\\s*(\\d+)분\\)`,
+        "i"
+      ),
+      new RegExp(
+        `${day}일차:\\s*([^(\\n]+)\\(예상 소요시간:\\s*(\\d+)분\\)`,
+        "i"
+      ),
+      new RegExp(
+        `${day}\\. \\s*([^(\\n]+)\\(예상 소요시간:\\s*(\\d+)분\\)`,
+        "i"
+      ),
+      new RegExp(`${day}\\. ${day}일차:\\s*([^(\\n]+)\\((\\d+)분\\)`, "i"),
+    ];
+
+    let match = null;
+    for (const pattern of patterns) {
+      match = aiRoutine.match(pattern);
+      if (match) break;
+    }
+
+    if (match) {
+      const activity = match[1].trim();
+      const estimatedDuration = parseInt(match[2]);
+
+      // 각 일차에 해당하는 날짜 계산
+      const routineDate = new Date(today);
+      routineDate.setDate(today.getDate() + (day - 1));
+
+      const routine = {
+        goal_id: goalId,
+        date: routineDate.toISOString().split("T")[0],
+        activity: activity,
+        estimated_duration: estimatedDuration,
+      };
+
+      console.log(`${day}일차 파싱 결과:`, routine);
+      routines.push(routine);
+    } else {
+      console.log(`${day}일차 파싱 실패, 패턴을 찾을 수 없습니다`);
+
+      // 패턴을 찾지 못했을 때 기본 루틴 생성
+      const routineDate = new Date(today);
+      routineDate.setDate(today.getDate() + (day - 1));
+
+      const routine = {
+        goal_id: goalId,
+        date: routineDate.toISOString().split("T")[0],
+        activity: `${day}일차 활동 (상세 계획 필요)`,
+        estimated_duration: 30, // 기본값
+      };
+
+      routines.push(routine);
+    }
+  }
+
+  console.log("최종 파싱된 루틴들:", routines);
+  return routines;
 }
 
 // 회원가입
@@ -258,18 +285,55 @@ app.post("/api/goals", authenticateToken, async (req, res) => {
 
     const goalId = goalResult.insertId;
 
+    // 오늘부터 목표일까지 총 일수 계산
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const target = new Date(target_date);
+    target.setHours(0, 0, 0, 0);
+    const totalDays = Math.ceil((target - today) / (1000 * 60 * 60 * 24)) + 1;
+
     // AI로 루틴 생성
     const aiRoutine = await generateRoutineWithGemini(
       description,
       category,
       target_date,
-      userInfo
+      userInfo,
+      totalDays
     );
+
+    // AI 루틴을 개별 일일 루틴으로 파싱하여 데이터베이스에 저장
+    const parsedRoutines = parseAIRoutineToDaily(
+      aiRoutine,
+      goalId,
+      target_date
+    );
+
+    // 루틴들을 데이터베이스에 저장하고 progress 테이블도 초기화
+    for (const routine of parsedRoutines) {
+      // 루틴 저장
+      const [routineResult] = await db.execute(
+        "INSERT INTO routines (goal_id, date, activity, estimated_duration) VALUES (?, ?, ?, ?)",
+        [
+          routine.goal_id,
+          routine.date,
+          routine.activity,
+          routine.estimated_duration,
+        ]
+      );
+
+      // progress 테이블에 초기 상태로 저장 (미완료)
+      await db.execute(
+        "INSERT INTO progress (routine_id, status) VALUES (?, ?)",
+        [routineResult.insertId, "미완료"]
+      );
+    }
 
     res.json({
       goalId,
       message: "목표가 생성되었습니다",
       aiRoutine,
+      routinesCreated: parsedRoutines.length,
+      totalDays: totalDays,
     });
   } catch (error) {
     console.error("목표 생성 오류:", error);
@@ -277,22 +341,169 @@ app.post("/api/goals", authenticateToken, async (req, res) => {
   }
 });
 
-// 사용자의 목표 목록 조회
+// 사용자의 목표 목록 조회 (상태별 분류)
 app.get("/api/goals", authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
+    const { status } = req.query; // 'completed', 'failed', 'in-progress'
 
+    // 모든 목표와 관련 루틴 정보 조회
     const [goals] = await db.execute(
-      "SELECT * FROM goals WHERE user_id = ? ORDER BY created_at DESC",
+      `
+      SELECT g.*, 
+        COUNT(r.id) as total_routines,
+        COUNT(CASE WHEN p.status = '완료' THEN 1 END) as completed_routines,
+        COUNT(CASE WHEN p.status = '미완료' THEN 1 END) as failed_routines,
+        COUNT(CASE WHEN r.date < CURDATE() AND p.status = '미완료' THEN 1 END) as auto_failed_routines
+      FROM goals g
+      LEFT JOIN routines r ON g.id = r.goal_id
+      LEFT JOIN progress p ON r.id = p.routine_id
+      WHERE g.user_id = ?
+      GROUP BY g.id
+      ORDER BY g.created_at DESC
+    `,
       [userId]
     );
 
-    res.json(goals);
+    // 목표 상태 분류
+    const categorizedGoals = {
+      inProgress: [],
+      completed: [],
+      failed: [],
+    };
+
+    goals.forEach((goal) => {
+      const totalRoutines = goal.total_routines || 0;
+      const completedRoutines = goal.completed_routines || 0;
+      const failedRoutines =
+        (goal.failed_routines || 0) + (goal.auto_failed_routines || 0);
+
+      if (totalRoutines === 0) {
+        categorizedGoals.inProgress.push(goal);
+      } else if (completedRoutines === totalRoutines) {
+        // 모든 루틴 완료
+        categorizedGoals.completed.push(goal);
+      } else if (failedRoutines > 3) {
+        // 미완료 루틴이 3개 초과
+        categorizedGoals.failed.push(goal);
+      } else {
+        categorizedGoals.inProgress.push(goal);
+      }
+    });
+
+    if (status) {
+      res.json(
+        categorizedGoals[status === "in-progress" ? "inProgress" : status] || []
+      );
+    } else {
+      res.json(categorizedGoals);
+    }
   } catch (error) {
     console.error("목표 조회 오류:", error);
     res.status(500).json({ error: "목표 조회에 실패했습니다" });
   }
 });
+
+// 특정 목표의 상세 정보 및 루틴 조회
+app.get("/api/goals/:goalId", authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { goalId } = req.params;
+
+    // 목표 정보 조회
+    const [goals] = await db.execute(
+      "SELECT * FROM goals WHERE id = ? AND user_id = ?",
+      [goalId, userId]
+    );
+
+    if (goals.length === 0) {
+      return res.status(404).json({ error: "목표를 찾을 수 없습니다" });
+    }
+
+    const goal = goals[0];
+
+    // 루틴과 진행상황 조회
+    const [routines] = await db.execute(
+      `
+      SELECT r.*, p.status, p.actual_time_spent, p.feedback, p.completed_at,
+        CASE 
+          WHEN DATE(r.date) = CURDATE() THEN 'today'
+          WHEN DATE(r.date) < CURDATE() AND p.status = '미완료' THEN 'auto_failed'
+          WHEN DATE(r.date) > CURDATE() THEN 'future'
+          ELSE 'normal'
+        END as routine_status
+      FROM routines r
+      LEFT JOIN progress p ON r.id = p.routine_id
+      WHERE r.goal_id = ?
+      ORDER BY r.date ASC
+    `,
+      [goalId]
+    );
+
+    res.json({
+      goal,
+      routines,
+    });
+  } catch (error) {
+    console.error("목표 상세 조회 오류:", error);
+    res.status(500).json({ error: "목표 상세 조회에 실패했습니다" });
+  }
+});
+
+// 루틴 상태 업데이트
+app.put(
+  "/api/routines/:routineId/progress",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const { routineId } = req.params;
+      const { status, actualTimeSpent, feedback } = req.body;
+      const userId = req.user.userId;
+
+      // 루틴이 사용자의 것인지 확인
+      const [routineCheck] = await db.execute(
+        `
+      SELECT r.*, g.user_id, r.date
+      FROM routines r
+      JOIN goals g ON r.goal_id = g.id
+      WHERE r.id = ? AND g.user_id = ?
+    `,
+        [routineId, userId]
+      );
+
+      if (routineCheck.length === 0) {
+        return res.status(404).json({ error: "루틴을 찾을 수 없습니다" });
+      }
+
+      const routine = routineCheck[0];
+      const today = new Date().toISOString().split("T")[0];
+
+      // 오늘 날짜의 루틴만 상태 변경 가능
+      if (routine.date !== today) {
+        return res
+          .status(400)
+          .json({ error: "오늘 날짜의 루틴만 상태를 변경할 수 있습니다" });
+      }
+
+      // progress 테이블 업데이트 (이미 존재한다고 가정)
+      await db.execute(
+        "UPDATE progress SET status = ?, actual_time_spent = ?, feedback = ?, completed_at = ? WHERE routine_id = ?",
+        [
+          status,
+          actualTimeSpent,
+          feedback,
+          status === "완료" ? new Date() : null,
+          routineId,
+        ]
+      );
+
+      res.json({ message: "루틴 상태가 업데이트되었습니다" });
+    } catch (error) {
+      console.error("루틴 상태 업데이트 오류:", error);
+      res.status(500).json({ error: "루틴 상태 업데이트에 실패했습니다" });
+    }
+  }
+);
 
 // 사용자 정보 조회
 app.get("/api/user/profile", authenticateToken, async (req, res) => {
@@ -313,6 +524,99 @@ app.get("/api/user/profile", authenticateToken, async (req, res) => {
     console.error("프로필 조회 오류:", error);
     res.status(500).json({ error: "프로필 조회에 실패했습니다" });
   }
+});
+
+// 루틴 생성 API 추가
+app.post("/api/goals/:goalId/routines", authenticateToken, async (req, res) => {
+  try {
+    const { goalId } = req.params;
+    const { routines } = req.body; // routines는 배열 형태
+    const userId = req.user.userId;
+
+    // 목표가 사용자의 것인지 확인
+    const [goalCheck] = await db.execute(
+      "SELECT id FROM goals WHERE id = ? AND user_id = ?",
+      [goalId, userId]
+    );
+
+    if (goalCheck.length === 0) {
+      return res.status(404).json({ error: "목표를 찾을 수 없습니다" });
+    }
+
+    // 기존 루틴 삭제 (재생성의 경우)
+    await db.execute("DELETE FROM routines WHERE goal_id = ?", [goalId]);
+
+    // 새 루틴들 생성
+    const insertPromises = routines.map((routine) => {
+      return db.execute(
+        "INSERT INTO routines (goal_id, title, description, date, estimated_time) VALUES (?, ?, ?, ?, ?)",
+        [
+          goalId,
+          routine.title,
+          routine.description,
+          routine.date,
+          routine.estimated_time,
+        ]
+      );
+    });
+
+    await Promise.all(insertPromises);
+
+    res.json({ message: "루틴이 성공적으로 생성되었습니다" });
+  } catch (error) {
+    console.error("루틴 생성 오류:", error);
+    res.status(500).json({ error: "루틴 생성에 실패했습니다" });
+  }
+});
+
+// 목표 삭제
+app.delete("/api/goals/:goalId", authenticateToken, async (req, res) => {
+  try {
+    const { goalId } = req.params;
+    const userId = req.user.userId;
+
+    // 목표가 사용자의 것인지 확인
+    const [goalCheck] = await db.execute(
+      "SELECT id FROM goals WHERE id = ? AND user_id = ?",
+      [goalId, userId]
+    );
+
+    if (goalCheck.length === 0) {
+      return res.status(404).json({ error: "목표를 찾을 수 없습니다" });
+    }
+
+    // 관련된 progress 레코드 삭제
+    await db.execute(
+      `
+      DELETE p FROM progress p 
+      INNER JOIN routines r ON p.routine_id = r.id 
+      WHERE r.goal_id = ?
+    `,
+      [goalId]
+    );
+
+    // 루틴 삭제
+    await db.execute("DELETE FROM routines WHERE goal_id = ?", [goalId]);
+
+    // 목표 삭제
+    await db.execute("DELETE FROM goals WHERE id = ?", [goalId]);
+
+    res.json({ message: "목표가 삭제되었습니다" });
+  } catch (error) {
+    console.error("목표 삭제 오류:", error);
+    res.status(500).json({ error: "목표 삭제에 실패했습니다" });
+  }
+});
+
+// 에러 핸들링 미들웨어
+app.use((error, req, res, next) => {
+  console.error("서버 에러:", error);
+  res.status(500).json({ error: "내부 서버 오류가 발생했습니다" });
+});
+
+// 404 핸들링
+app.use((req, res) => {
+  res.status(404).json({ error: "요청하신 경로를 찾을 수 없습니다" });
 });
 
 app.listen(PORT, () => {

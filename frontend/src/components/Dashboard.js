@@ -1,9 +1,16 @@
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
+import GoalDetail from "./GoalDetail";
 
 const Dashboard = ({ user, onLogout }) => {
-  const [goals, setGoals] = useState([]);
+  const [goals, setGoals] = useState({
+    inProgress: [],
+    completed: [],
+    failed: [],
+  });
+  const [activeTab, setActiveTab] = useState("inProgress");
+  const [selectedGoal, setSelectedGoal] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -34,6 +41,39 @@ const Dashboard = ({ user, onLogout }) => {
     return colors[category] || "#95a5a6";
   };
 
+  const getTabTitle = (tab) => {
+    const titles = {
+      inProgress: "진행 중인 목표",
+      completed: "완료된 목표",
+      failed: "미완료 목표",
+    };
+    return titles[tab];
+  };
+
+  const getTabCount = (tab) => {
+    return goals[tab]?.length || 0;
+  };
+
+  const handleGoalClick = (goalId) => {
+    setSelectedGoal(goalId);
+  };
+
+  const handleBackToDashboard = () => {
+    setSelectedGoal(null);
+    fetchGoals(); // 상태 업데이트를 위해 다시 조회
+  };
+
+  if (selectedGoal) {
+    return (
+      <GoalDetail
+        goalId={selectedGoal}
+        user={user}
+        onLogout={onLogout}
+        onBack={handleBackToDashboard}
+      />
+    );
+  }
+
   return (
     <div className="dashboard-container">
       <header className="dashboard-header">
@@ -56,32 +96,32 @@ const Dashboard = ({ user, onLogout }) => {
       <main className="dashboard-main">
         <section className="stats-section">
           <div className="stat-card">
-            <div className="stat-number">{goals.length}</div>
-            <div className="stat-label">전체 목표</div>
+            <div className="stat-number">{getTabCount("inProgress")}</div>
+            <div className="stat-label">진행 중</div>
           </div>
           <div className="stat-card">
-            <div className="stat-number">
-              {goals.filter((goal) => goal.is_completed).length}
-            </div>
-            <div className="stat-label">완료된 목표</div>
+            <div className="stat-number">{getTabCount("completed")}</div>
+            <div className="stat-label">완료됨</div>
           </div>
           <div className="stat-card">
-            <div className="stat-number">
-              {goals.filter((goal) => !goal.is_completed).length}
-            </div>
-            <div className="stat-label">진행 중인 목표</div>
+            <div className="stat-number">{getTabCount("failed")}</div>
+            <div className="stat-label">미완료</div>
           </div>
         </section>
 
         <section className="goals-section">
           <div className="section-header">
-            <h2>나의 목표들</h2>
-            {goals.length === 0 && !loading && (
-              <p className="empty-message">
-                아직 목표가 없습니다. <Link to="/goal-input">첫 번째 목표</Link>
-                를 만들어보세요!
-              </p>
-            )}
+            <div className="tab-navigation">
+              {["inProgress", "completed", "failed"].map((tab) => (
+                <button
+                  key={tab}
+                  className={`tab-button ${activeTab === tab ? "active" : ""}`}
+                  onClick={() => setActiveTab(tab)}
+                >
+                  {getTabTitle(tab)} ({getTabCount(tab)})
+                </button>
+              ))}
+            </div>
           </div>
 
           {loading ? (
@@ -90,40 +130,78 @@ const Dashboard = ({ user, onLogout }) => {
               <p>목표를 불러오는 중...</p>
             </div>
           ) : (
-            <div className="goals-grid">
-              {goals.map((goal) => (
-                <div key={goal.id} className="goal-card">
-                  <div className="goal-header">
-                    <div
-                      className="goal-category"
-                      style={{
-                        backgroundColor: getCategoryColor(goal.category),
-                      }}
-                    >
-                      {goal.category}
-                    </div>
-                    <div
-                      className={`goal-status ${
-                        goal.is_completed ? "completed" : "in-progress"
-                      }`}
-                    >
-                      {goal.is_completed ? "완료" : "진행중"}
-                    </div>
-                  </div>
-
-                  <div className="goal-content">
-                    <p className="goal-description">{goal.description}</p>
-                    <div className="goal-meta">
-                      <span className="goal-date">
-                        목표 날짜: {formatDate(goal.target_date)}
-                      </span>
-                      <span className="goal-created">
-                        생성일: {formatDate(goal.created_at)}
-                      </span>
-                    </div>
-                  </div>
+            <div className="goals-content">
+              {goals[activeTab]?.length === 0 ? (
+                <div className="empty-message">
+                  <p>
+                    {activeTab === "inProgress" &&
+                      "진행 중인 목표가 없습니다. "}
+                    {activeTab === "completed" && "완료된 목표가 없습니다. "}
+                    {activeTab === "failed" && "미완료 목표가 없습니다. "}
+                    {activeTab === "inProgress" && (
+                      <Link to="/goal-input">첫 번째 목표</Link>
+                    )}
+                    {activeTab === "inProgress" && "를 만들어보세요!"}
+                  </p>
                 </div>
-              ))}
+              ) : (
+                <div className="goals-grid">
+                  {goals[activeTab]?.map((goal) => (
+                    <div
+                      key={goal.id}
+                      className="goal-card clickable"
+                      onClick={() => handleGoalClick(goal.id)}
+                    >
+                      <div className="goal-header">
+                        <div
+                          className="goal-category"
+                          style={{
+                            backgroundColor: getCategoryColor(goal.category),
+                          }}
+                        >
+                          {goal.category}
+                        </div>
+                        <div
+                          className={`goal-status ${
+                            activeTab === "completed"
+                              ? "completed"
+                              : activeTab === "failed"
+                              ? "failed"
+                              : "in-progress"
+                          }`}
+                        >
+                          {activeTab === "completed"
+                            ? "완료"
+                            : activeTab === "failed"
+                            ? "미완료"
+                            : "진행중"}
+                        </div>
+                      </div>
+
+                      <div className="goal-content">
+                        <p className="goal-description">{goal.description}</p>
+                        <div className="goal-meta">
+                          <span className="goal-date">
+                            목표 날짜: {formatDate(goal.target_date)}
+                          </span>
+                          <span className="goal-created">
+                            생성일: {formatDate(goal.created_at)}
+                          </span>
+                          {goal.total_routines > 0 && (
+                            <div className="routine-progress">
+                              완료: {goal.completed_routines || 0}/
+                              {goal.total_routines}
+                            </div>
+                          )}
+                        </div>
+                        <div className="goal-actions">
+                          <span className="view-detail">자세히 보기 →</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </section>

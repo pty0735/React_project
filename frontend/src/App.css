@@ -461,38 +461,476 @@ body {
   margin: 0;
 }
 
-/* 반응형 디자인 */
+/* 탭 네비게이션 스타일 */
+.tab-navigation {
+  display: flex;
+  gap: 0;
+  margin-bottom: 2rem;
+  border-bottom: 2px solid #e9ecef;
+}
+
+.tab-button {
+  background: none;
+  border: none;
+  padding: 1rem 1.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #666;
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+  transition: all 0.3s ease;
+  white-space: nowrap;
+}
+
+.tab-button:hover {
+  color: #333;
+  background-color: #f8f9fa;
+}
+
+.tab-button.active {
+  color: #007bff;
+  border-bottom-color: #007bff;
+  background-color: #f8f9fa;
+}
+
+/* 목표 카드 클릭 가능 스타일 */
+.goal-card.clickable {
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.goal-card.clickable:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+}
+
+.goal-actions {
+  margin-top: 1rem;
+  text-align: right;
+}
+
+.view-detail {
+  color: #007bff;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.routine-progress {
+  font-size: 0.85rem;
+  color: #007bff;
+  font-weight: 600;
+  margin-top: 0.5rem;
+}
+
+.goal-status.failed {
+  background-color: #f8d7da;
+  color: #721c24;
+}
+
+/* 목표 상세 페이지 스타일 */
+.goal-detail-container {
+  min-height: 100vh;
+  background-color: #f8f9fa;
+}
+
+.goal-detail-header {
+  background: white;
+  border-bottom: 1px solid #e9ecef;
+  padding: 1.5rem 0;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.back-button {
+  background: #6c757d;
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+  transition: background-color 0.3s ease;
+}
+
+.back-button:hover {
+  background: #5a6268;
+}
+
+.goal-info {
+  margin-left: 0;
+}
+
+.goal-title-section {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.goal-category-badge {
+  color: white;
+  padding: 0.4rem 1rem;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.goal-title-section h1 {
+  margin: 0;
+  color: #333;
+  font-size: 1.8rem;
+}
+
+.goal-description {
+  color: #666;
+  font-size: 1.1rem;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.goal-detail-main {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+}
+
+.goal-summary {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2rem;
+  margin-bottom: 3rem;
+}
+
+.summary-card {
+  background: white;
+  padding: 2rem;
+  border-radius: 12px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+}
+
+.summary-card h3 {
+  margin-top: 0;
+  margin-bottom: 1.5rem;
+  color: #333;
+}
+
+.summary-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.summary-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.summary-item .label {
+  color: #666;
+  font-weight: 600;
+}
+
+.summary-item .value {
+  color: #333;
+  font-weight: 500;
+}
+
+.progress-cards {
+  display: flex;
+  gap: 1rem;
+}
+
+.progress-card {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 12px;
+  text-align: center;
+  min-width: 100px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+}
+
+.progress-card.completed {
+  border-left: 4px solid #28a745;
+}
+
+.progress-card.failed {
+  border-left: 4px solid #dc3545;
+}
+
+.progress-card.remaining {
+  border-left: 4px solid #ffc107;
+}
+
+.progress-number {
+  font-size: 2rem;
+  font-weight: bold;
+  margin-bottom: 0.5rem;
+}
+
+.progress-card.completed .progress-number {
+  color: #28a745;
+}
+
+.progress-card.failed .progress-number {
+  color: #dc3545;
+}
+
+.progress-card.remaining .progress-number {
+  color: #ffc107;
+}
+
+.progress-label {
+  color: #666;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.routines-section {
+  background: white;
+  padding: 2rem;
+  border-radius: 12px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+}
+
+.routines-section h2 {
+  margin-top: 0;
+  margin-bottom: 2rem;
+  color: #333;
+}
+
+.empty-routines {
+  text-align: center;
+  padding: 3rem;
+  color: #666;
+}
+
+.routines-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.routine-card {
+  border: 1px solid #e9ecef;
+  border-radius: 12px;
+  padding: 1.5rem;
+  transition: box-shadow 0.3s ease;
+}
+
+.routine-card.today {
+  border-color: #007bff;
+  background: linear-gradient(135deg, #f8f9ff 0%, #ffffff 100%);
+  box-shadow: 0 4px 12px rgba(0, 123, 255, 0.1);
+}
+
+.routine-card.auto-failed {
+  border-color: #dc3545;
+  background: linear-gradient(135deg, #fff5f5 0%, #ffffff 100%);
+}
+
+.routine-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.routine-date-info {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.routine-day {
+  background: #6c757d;
+  color: white;
+  padding: 0.3rem 0.8rem;
+  border-radius: 15px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.routine-date {
+  color: #333;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.today-badge {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 0.3rem 0.8rem;
+  border-radius: 15px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+.routine-status-badge {
+  color: white;
+  padding: 0.4rem 1rem;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.routine-content {
+  margin-left: 0;
+}
+
+.routine-activity {
+  color: #333;
+  font-size: 1.1rem;
+  line-height: 1.5;
+  margin-bottom: 1rem;
+}
+
+.routine-meta {
+  display: flex;
+  gap: 2rem;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+  color: #666;
+}
+
+.routine-feedback {
+  background: #f8f9fa;
+  padding: 1rem;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+  color: #333;
+  border-left: 4px solid #007bff;
+}
+
+.routine-actions {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #e9ecef;
+}
+
+.actions-title {
+  margin-bottom: 1rem;
+  color: #333;
+  font-weight: 600;
+}
+
+.status-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.status-btn {
+  padding: 0.7rem 1.2rem;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.3s ease;
+  font-size: 0.9rem;
+}
+
+.status-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.status-btn.completed {
+  background: #28a745;
+  color: white;
+}
+
+.status-btn.completed:hover:not(:disabled) {
+  background: #218838;
+}
+
+.status-btn.in-progress {
+  background: #ffc107;
+  color: #333;
+}
+
+.status-btn.in-progress:hover:not(:disabled) {
+  background: #e0a800;
+}
+
+.status-btn.failed {
+  background: #dc3545;
+  color: white;
+}
+
+.status-btn.failed:hover:not(:disabled) {
+  background: #c82333;
+}
+
+.error-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  gap: 2rem;
+}
+
+.error-container p {
+  font-size: 1.2rem;
+  color: #666;
+}
+
+/* 반응형 디자인 업데이트 */
 @media (max-width: 768px) {
-  .header-content {
+  .tab-navigation {
     flex-direction: column;
-    gap: 1rem;
-    text-align: center;
   }
 
-  .header-right {
-    width: 100%;
+  .tab-button {
+    text-align: left;
+    border-bottom: 1px solid #e9ecef;
+    border-radius: 0;
+  }
+
+  .tab-button.active {
+    border-left: 4px solid #007bff;
+    border-bottom: 1px solid #e9ecef;
+  }
+
+  .goal-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .progress-cards {
     justify-content: center;
+    flex-wrap: wrap;
   }
 
-  .stats-section {
-    grid-template-columns: 1fr;
-  }
-
-  .goals-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .goal-form-container {
-    padding: 1.5rem;
-  }
-
-  .result-header {
+  .routine-date-info {
     flex-direction: column;
-    gap: 1rem;
-    text-align: center;
+    align-items: flex-start;
+    gap: 0.5rem;
   }
 
-  .auth-card {
-    padding: 2rem;
+  .routine-meta {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .status-buttons {
+    flex-direction: column;
+  }
+
+  .status-btn {
+    width: 100%;
   }
 }
