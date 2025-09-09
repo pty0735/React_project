@@ -25,7 +25,18 @@ const db = mysql.createPool({
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
+  timezone: "+09:00", // 한국 시간 설정
 });
+
+// 한국 시간 기준 날짜 함수들
+const getKoreanDate = (date = new Date()) => {
+  const koreaTime = new Date(date.getTime() + 9 * 60 * 60 * 1000);
+  return koreaTime.toISOString().split("T")[0];
+};
+
+const getKoreanToday = () => {
+  return getKoreanDate();
+};
 
 // JWT 인증 미들웨어
 const authenticateToken = (req, res, next) => {
@@ -68,9 +79,7 @@ async function generateRoutineWithGemini(
   제목: [목표에 맞는 루틴 제목]
   
   일일 계획:
-  1. 1일차: [구체적인 활동] (예상 소요시간: X분)
-  2. 2일차: [구체적인 활동] (예상 소요시간: X분)
-  3. 3일차: [구체적인 활동] (예상 소요시간: X분)
+  1. x일차: [구체적인 활동] (예상 소요시간: X분)
   ...
   ${totalDays}. ${totalDays}일차: [구체적인 활동] (예상 소요시간: X분)
   
@@ -104,22 +113,24 @@ async function generateRoutineWithGemini(
   }
 }
 
-// AI 루틴 텍스트를 파싱하여 개별 루틴으로 변환하는 함수 (수정된 버전)
+// AI 루틴 텍스트를 파싱하여 개별 루틴으로 변환하는 함수 (한국 시간 기준)
 function parseAIRoutineToDaily(aiRoutine, goalId, targetDate) {
   const routines = [];
 
   console.log("원본 AI 루틴:", aiRoutine);
 
-  // 오늘 날짜부터 목표 날짜까지 계산
-  const today = new Date();
-  today.setHours(0, 0, 0, 0); // 시간을 00:00:00으로 설정
-
-  const target = new Date(targetDate);
-  target.setHours(0, 0, 0, 0);
+  // 한국 시간 기준 오늘 날짜
+  const today = getKoreanToday();
+  const target = targetDate;
 
   // 총 일수 계산 (오늘부터 목표일까지)
-  const totalDays = Math.ceil((target - today) / (1000 * 60 * 60 * 24)) + 1;
+  const todayDate = new Date(today);
+  const targetDateObj = new Date(target);
+  const totalDays =
+    Math.ceil((targetDateObj - todayDate) / (1000 * 60 * 60 * 24)) + 1;
 
+  console.log(`한국 시간 기준 오늘: ${today}`);
+  console.log(`목표일: ${target}`);
   console.log(`총 ${totalDays}일간의 루틴을 생성합니다.`);
 
   // 각 일차별 루틴 추출
@@ -151,9 +162,9 @@ function parseAIRoutineToDaily(aiRoutine, goalId, targetDate) {
       const activity = match[1].trim();
       const estimatedDuration = parseInt(match[2]);
 
-      // 각 일차에 해당하는 날짜 계산
-      const routineDate = new Date(today);
-      routineDate.setDate(today.getDate() + (day - 1));
+      // 각 일차에 해당하는 날짜 계산 (한국 시간 기준)
+      const routineDate = new Date(todayDate);
+      routineDate.setDate(todayDate.getDate() + (day - 1));
 
       const routine = {
         goal_id: goalId,
@@ -168,8 +179,8 @@ function parseAIRoutineToDaily(aiRoutine, goalId, targetDate) {
       console.log(`${day}일차 파싱 실패, 패턴을 찾을 수 없습니다`);
 
       // 패턴을 찾지 못했을 때 기본 루틴 생성
-      const routineDate = new Date(today);
-      routineDate.setDate(today.getDate() + (day - 1));
+      const routineDate = new Date(todayDate);
+      routineDate.setDate(todayDate.getDate() + (day - 1));
 
       const routine = {
         goal_id: goalId,
@@ -264,8 +275,81 @@ app.post("/api/auth/login", async (req, res) => {
     res.status(500).json({ error: "서버 오류가 발생했습니다" });
   }
 });
+// 사용자의 목표 목록 조회 (상태별 분류) - 수정된 분류 로직
+app.get("/api/goals", authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { status } = req.query; // 'completed', 'failed', 'in-progress'
 
-// 목표 생성 및 AI 루틴 생성
+    // 모든 목표와 관련 루틴 정보 조회
+    const [goals] = await db.execute(
+      `
+      SELECT g.*, 
+        COUNT(r.id) as total_routines,
+        COUNT(CASE WHEN p.status = '완료' THEN 1 END) as completed_routines,
+        COUNT(CASE WHEN p.status = '미완료' THEN 1 END) as failed_routines,
+        COUNT(CASE WHEN r.date < DATE(CONVERT_TZ(NOW(), '+00:00', '+09:00')) AND p.status != '완료' AND p.status != '미완료' THEN 1 END) as auto_failed_routines,
+        COUNT(CASE WHEN p.status = '진행중' THEN 1 END) as in_progress_routines
+      FROM goals g
+      LEFT JOIN routines r ON g.id = r.goal_id
+      LEFT JOIN progress p ON r.id = p.routine_id
+      WHERE g.user_id = ?
+      GROUP BY g.id
+      ORDER BY g.created_at DESC
+    `,
+      [userId]
+    );
+
+    // 목표 상태 분류 - 새로운 로직
+    const categorizedGoals = {
+      inProgress: [],
+      completed: [],
+      failed: [],
+    };
+
+    goals.forEach((goal) => {
+      const totalRoutines = goal.total_routines || 0;
+      const completedRoutines = goal.completed_routines || 0;
+      const failedRoutines = goal.failed_routines || 0;
+      const autoFailedRoutines = goal.auto_failed_routines || 0;
+      const totalFailedRoutines = failedRoutines + autoFailedRoutines;
+
+      console.log(
+        `목표 ID ${goal.id}: 전체 ${totalRoutines}, 완료 ${completedRoutines}, 실패 ${failedRoutines}, 자동실패 ${autoFailedRoutines}, 총실패 ${totalFailedRoutines}`
+      );
+
+      if (totalRoutines === 0) {
+        // 루틴이 없으면 진행중
+        categorizedGoals.inProgress.push(goal);
+      } else if (completedRoutines === totalRoutines) {
+        // 모든 루틴 완료
+        categorizedGoals.completed.push(goal);
+      } else if (
+        totalFailedRoutines === totalRoutines ||
+        totalFailedRoutines >= 4
+      ) {
+        // 모든 루틴이 미완료이거나, 미완료 루틴이 4개 이상이면 실패한 목표
+        categorizedGoals.failed.push(goal);
+      } else {
+        // 나머지는 모두 진행중
+        categorizedGoals.inProgress.push(goal);
+      }
+    });
+
+    if (status) {
+      res.json(
+        categorizedGoals[status === "in-progress" ? "inProgress" : status] || []
+      );
+    } else {
+      res.json(categorizedGoals);
+    }
+  } catch (error) {
+    console.error("목표 조회 오류:", error);
+    res.status(500).json({ error: "목표 조회에 실패했습니다" });
+  }
+});
+
+// Progress 테이블 초기화 시 디폴트 값을 '진행중'으로 변경
 app.post("/api/goals", authenticateToken, async (req, res) => {
   try {
     const { category, description, target_date } = req.body;
@@ -285,12 +369,12 @@ app.post("/api/goals", authenticateToken, async (req, res) => {
 
     const goalId = goalResult.insertId;
 
-    // 오늘부터 목표일까지 총 일수 계산
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const target = new Date(target_date);
-    target.setHours(0, 0, 0, 0);
-    const totalDays = Math.ceil((target - today) / (1000 * 60 * 60 * 24)) + 1;
+    // 한국 시간 기준 오늘부터 목표일까지 총 일수 계산
+    const today = getKoreanToday();
+    const todayDate = new Date(today);
+    const targetDateObj = new Date(target_date);
+    const totalDays =
+      Math.ceil((targetDateObj - todayDate) / (1000 * 60 * 60 * 24)) + 1;
 
     // AI로 루틴 생성
     const aiRoutine = await generateRoutineWithGemini(
@@ -321,10 +405,10 @@ app.post("/api/goals", authenticateToken, async (req, res) => {
         ]
       );
 
-      // progress 테이블에 초기 상태로 저장 (미완료)
+      // progress 테이블에 초기 상태로 저장 - 디폴트를 '진행중'으로 변경
       await db.execute(
         "INSERT INTO progress (routine_id, status) VALUES (?, ?)",
-        [routineResult.insertId, "미완료"]
+        [routineResult.insertId, "진행중"]
       );
     }
 
@@ -340,70 +424,6 @@ app.post("/api/goals", authenticateToken, async (req, res) => {
     res.status(500).json({ error: "목표 생성에 실패했습니다" });
   }
 });
-
-// 사용자의 목표 목록 조회 (상태별 분류)
-app.get("/api/goals", authenticateToken, async (req, res) => {
-  try {
-    const userId = req.user.userId;
-    const { status } = req.query; // 'completed', 'failed', 'in-progress'
-
-    // 모든 목표와 관련 루틴 정보 조회
-    const [goals] = await db.execute(
-      `
-      SELECT g.*, 
-        COUNT(r.id) as total_routines,
-        COUNT(CASE WHEN p.status = '완료' THEN 1 END) as completed_routines,
-        COUNT(CASE WHEN p.status = '미완료' THEN 1 END) as failed_routines,
-        COUNT(CASE WHEN r.date < CURDATE() AND p.status = '미완료' THEN 1 END) as auto_failed_routines
-      FROM goals g
-      LEFT JOIN routines r ON g.id = r.goal_id
-      LEFT JOIN progress p ON r.id = p.routine_id
-      WHERE g.user_id = ?
-      GROUP BY g.id
-      ORDER BY g.created_at DESC
-    `,
-      [userId]
-    );
-
-    // 목표 상태 분류
-    const categorizedGoals = {
-      inProgress: [],
-      completed: [],
-      failed: [],
-    };
-
-    goals.forEach((goal) => {
-      const totalRoutines = goal.total_routines || 0;
-      const completedRoutines = goal.completed_routines || 0;
-      const failedRoutines =
-        (goal.failed_routines || 0) + (goal.auto_failed_routines || 0);
-
-      if (totalRoutines === 0) {
-        categorizedGoals.inProgress.push(goal);
-      } else if (completedRoutines === totalRoutines) {
-        // 모든 루틴 완료
-        categorizedGoals.completed.push(goal);
-      } else if (failedRoutines > 3) {
-        // 미완료 루틴이 3개 초과
-        categorizedGoals.failed.push(goal);
-      } else {
-        categorizedGoals.inProgress.push(goal);
-      }
-    });
-
-    if (status) {
-      res.json(
-        categorizedGoals[status === "in-progress" ? "inProgress" : status] || []
-      );
-    } else {
-      res.json(categorizedGoals);
-    }
-  } catch (error) {
-    console.error("목표 조회 오류:", error);
-    res.status(500).json({ error: "목표 조회에 실패했습니다" });
-  }
-});
-
 // 특정 목표의 상세 정보 및 루틴 조회
 app.get("/api/goals/:goalId", authenticateToken, async (req, res) => {
   try {
@@ -421,15 +441,16 @@ app.get("/api/goals/:goalId", authenticateToken, async (req, res) => {
     }
 
     const goal = goals[0];
+    const koreanToday = getKoreanToday();
 
-    // 루틴과 진행상황 조회
+    // 루틴과 진행상황 조회 (한국 시간 기준)
     const [routines] = await db.execute(
       `
       SELECT r.*, p.status, p.actual_time_spent, p.feedback, p.completed_at,
         CASE 
-          WHEN DATE(r.date) = CURDATE() THEN 'today'
-          WHEN DATE(r.date) < CURDATE() AND p.status = '미완료' THEN 'auto_failed'
-          WHEN DATE(r.date) > CURDATE() THEN 'future'
+          WHEN r.date = ? THEN 'today'
+          WHEN r.date < ? AND p.status = '미완료' THEN 'auto_failed'
+          WHEN r.date > ? THEN 'future'
           ELSE 'normal'
         END as routine_status
       FROM routines r
@@ -437,7 +458,7 @@ app.get("/api/goals/:goalId", authenticateToken, async (req, res) => {
       WHERE r.goal_id = ?
       ORDER BY r.date ASC
     `,
-      [goalId]
+      [koreanToday, koreanToday, koreanToday, goalId]
     );
 
     res.json({
@@ -450,7 +471,7 @@ app.get("/api/goals/:goalId", authenticateToken, async (req, res) => {
   }
 });
 
-// 루틴 상태 업데이트
+// 루틴 상태 업데이트 (한국 시간 기준)
 app.put(
   "/api/routines/:routineId/progress",
   authenticateToken,
@@ -476,14 +497,9 @@ app.put(
       }
 
       const routine = routineCheck[0];
-      const today = new Date().toISOString().split("T")[0];
+      const koreanToday = getKoreanToday();
 
-      // 오늘 날짜의 루틴만 상태 변경 가능
-      if (routine.date !== today) {
-        return res
-          .status(400)
-          .json({ error: "오늘 날짜의 루틴만 상태를 변경할 수 있습니다" });
-      }
+      console.log(`루틴 날짜: ${routine.date}, 한국 오늘 날짜: ${koreanToday}`);
 
       // progress 테이블 업데이트 (이미 존재한다고 가정)
       await db.execute(
@@ -497,13 +513,51 @@ app.put(
         ]
       );
 
-      res.json({ message: "루틴 상태가 업데이트되었습니다" });
+      res.json({
+        message: "루틴 상태가 업데이트되었습니다",
+        routineDate: routine.date,
+        koreanToday: koreanToday,
+      });
     } catch (error) {
       console.error("루틴 상태 업데이트 오류:", error);
       res.status(500).json({ error: "루틴 상태 업데이트에 실패했습니다" });
     }
   }
 );
+
+// 루틴 삭제
+app.delete("/api/routines/:routineId", authenticateToken, async (req, res) => {
+  try {
+    const { routineId } = req.params;
+    const userId = req.user.userId;
+
+    // 루틴이 사용자의 것인지 확인
+    const [routineCheck] = await db.execute(
+      `
+      SELECT r.*, g.user_id
+      FROM routines r
+      JOIN goals g ON r.goal_id = g.id
+      WHERE r.id = ? AND g.user_id = ?
+    `,
+      [routineId, userId]
+    );
+
+    if (routineCheck.length === 0) {
+      return res.status(404).json({ error: "루틴을 찾을 수 없습니다" });
+    }
+
+    // progress 레코드 삭제
+    await db.execute("DELETE FROM progress WHERE routine_id = ?", [routineId]);
+
+    // 루틴 삭제
+    await db.execute("DELETE FROM routines WHERE id = ?", [routineId]);
+
+    res.json({ message: "루틴이 삭제되었습니다" });
+  } catch (error) {
+    console.error("루틴 삭제 오류:", error);
+    res.status(500).json({ error: "루틴 삭제에 실패했습니다" });
+  }
+});
 
 // 사용자 정보 조회
 app.get("/api/user/profile", authenticateToken, async (req, res) => {

@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
+import "../App.css";
 
 const GoalDetail = ({ goalId, user, onLogout, onBack }) => {
   const [goalDetail, setGoalDetail] = useState(null);
   const [loading, setLoading] = useState(true);
   const [updatingRoutine, setUpdatingRoutine] = useState(null);
+  const [deletingRoutine, setDeletingRoutine] = useState(null);
 
   useEffect(() => {
     fetchGoalDetail();
@@ -43,6 +45,27 @@ const GoalDetail = ({ goalId, user, onLogout, onBack }) => {
     }
   };
 
+  const handleDeleteRoutine = async (routineId) => {
+    if (deletingRoutine === routineId) return;
+
+    const confirmDelete = window.confirm("이 루틴을 삭제하시겠습니까?");
+    if (!confirmDelete) return;
+
+    setDeletingRoutine(routineId);
+
+    try {
+      await axios.delete(`/api/routines/${routineId}`);
+      alert("루틴이 삭제되었습니다.");
+      // 삭제 후 다시 조회
+      await fetchGoalDetail();
+    } catch (error) {
+      console.error("루틴 삭제 실패:", error);
+      alert(error.response?.data?.error || "루틴 삭제에 실패했습니다");
+    } finally {
+      setDeletingRoutine(null);
+    }
+  };
+
   const formatDate = (dateString) => {
     return new Date(dateString).toLocaleDateString("ko-KR", {
       year: "numeric",
@@ -63,13 +86,13 @@ const GoalDetail = ({ goalId, user, onLogout, onBack }) => {
       case "미완료":
         return "#dc3545";
       default:
-        return "#6c757d";
+        return "#ffc107"; // 기본값을 진행중 색상으로 변경
     }
   };
 
   const getStatusText = (status, routineStatus) => {
     if (routineStatus === "auto_failed") return "미완료 (자동)";
-    return status || "미완료";
+    return status || "진행중"; // 기본값을 진행중으로 변경
   };
 
   const canUpdateStatus = (routine) => {
@@ -126,7 +149,8 @@ const GoalDetail = ({ goalId, user, onLogout, onBack }) => {
     (r) => r.status === "미완료" || r.routine_status === "auto_failed"
   ).length;
   const inProgressRoutines = routines.filter(
-    (r) => r.status === "진행중"
+    (r) =>
+      r.status === "진행중" || (!r.status && r.routine_status !== "auto_failed")
   ).length;
 
   return (
@@ -227,16 +251,26 @@ const GoalDetail = ({ goalId, user, onLogout, onBack }) => {
                         <span className="future-badge">⏳ 예정</span>
                       )}
                     </div>
-                    <div
-                      className="routine-status-badge"
-                      style={{
-                        backgroundColor: getStatusColor(
-                          routine.status,
-                          routine.routine_status
-                        ),
-                      }}
-                    >
-                      {getStatusText(routine.status, routine.routine_status)}
+                    <div className="routine-header-actions">
+                      <div
+                        className="routine-status-badge"
+                        style={{
+                          backgroundColor: getStatusColor(
+                            routine.status,
+                            routine.routine_status
+                          ),
+                        }}
+                      >
+                        {getStatusText(routine.status, routine.routine_status)}
+                      </div>
+                      <button
+                        className="delete-routine-btn"
+                        onClick={() => handleDeleteRoutine(routine.id)}
+                        disabled={deletingRoutine === routine.id}
+                        title="루틴 삭제"
+                      >
+                        {deletingRoutine === routine.id ? "삭제중..." : "🗑️"}
+                      </button>
                     </div>
                   </div>
 
@@ -277,17 +311,6 @@ const GoalDetail = ({ goalId, user, onLogout, onBack }) => {
                               : "✅ 완료"}
                           </button>
                           <button
-                            className="status-btn in-progress"
-                            onClick={() =>
-                              handleStatusUpdate(routine.id, "진행중")
-                            }
-                            disabled={updatingRoutine === routine.id}
-                          >
-                            {updatingRoutine === routine.id
-                              ? "처리중..."
-                              : "🔄 진행중"}
-                          </button>
-                          <button
                             className="status-btn failed"
                             onClick={() =>
                               handleStatusUpdate(routine.id, "미완료")
@@ -323,465 +346,6 @@ const GoalDetail = ({ goalId, user, onLogout, onBack }) => {
           )}
         </section>
       </main>
-
-      <style jsx>{`
-        .goal-detail-container {
-          min-height: 100vh;
-          background: linear-gradient(
-            135deg,
-            rgb(178, 192, 255) 0%,
-            #764ba2 100%
-          );
-          font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-        }
-
-        .goal-detail-header {
-          background: rgba(255, 255, 255, 0.95);
-          backdrop-filter: blur(10px);
-          border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-          padding: 1.5rem 0;
-          margin-bottom: 2rem;
-        }
-
-        .header-content {
-          max-width: 1200px;
-          margin: 0 auto;
-          padding: 0 2rem;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-        }
-
-        .back-button {
-          background: #6c5ce7;
-          color: white;
-          border: none;
-          padding: 0.75rem 1.5rem;
-          border-radius: 8px;
-          cursor: pointer;
-          font-weight: 500;
-          margin-bottom: 1rem;
-          transition: background 0.3s ease;
-        }
-
-        .back-button:hover {
-          background: #5a4fcf;
-        }
-
-        .goal-title-section {
-          display: flex;
-          align-items: center;
-          gap: 1rem;
-          margin-bottom: 0.5rem;
-        }
-
-        .goal-category-badge {
-          padding: 0.5rem 1rem;
-          border-radius: 20px;
-          color: white;
-          font-weight: 600;
-          font-size: 0.9rem;
-        }
-
-        .goal-description {
-          color: #666;
-          font-size: 1.1rem;
-          margin: 0;
-        }
-
-        .logout-btn {
-          background: #e17055;
-          color: white;
-          border: none;
-          padding: 0.75rem 1.5rem;
-          border-radius: 8px;
-          cursor: pointer;
-          font-weight: 500;
-          transition: background 0.3s ease;
-        }
-
-        .logout-btn:hover {
-          background: #d63031;
-        }
-
-        .goal-detail-main {
-          max-width: 1200px;
-          margin: 0 auto;
-          padding: 0 2rem 3rem;
-        }
-
-        .goal-summary {
-          display: grid;
-          grid-template-columns: 1fr 2fr;
-          gap: 2rem;
-          margin-bottom: 3rem;
-        }
-
-        .summary-card {
-          background: rgba(255, 255, 255, 0.95);
-          backdrop-filter: blur(10px);
-          padding: 2rem;
-          border-radius: 16px;
-          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-        }
-
-        .summary-card h3 {
-          margin: 0 0 1.5rem 0;
-          color: #2d3436;
-          font-size: 1.3rem;
-        }
-
-        .summary-item {
-          display: flex;
-          justify-content: space-between;
-          margin-bottom: 1rem;
-          padding-bottom: 1rem;
-          border-bottom: 1px solid #eee;
-        }
-
-        .summary-item:last-child {
-          border-bottom: none;
-          margin-bottom: 0;
-          padding-bottom: 0;
-        }
-
-        .label {
-          font-weight: 500;
-          color: #636e72;
-        }
-
-        .value {
-          font-weight: 600;
-          color: #2d3436;
-        }
-
-        .progress-cards {
-          display: grid;
-          grid-template-columns: repeat(4, 1fr);
-          gap: 1rem;
-        }
-
-        .progress-card {
-          background: rgba(255, 255, 255, 0.95);
-          backdrop-filter: blur(10px);
-          padding: 1.5rem;
-          border-radius: 12px;
-          text-align: center;
-          box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
-          transition: transform 0.3s ease;
-        }
-
-        .progress-card:hover {
-          transform: translateY(-2px);
-        }
-
-        .progress-number {
-          font-size: 2rem;
-          font-weight: bold;
-          margin-bottom: 0.5rem;
-        }
-
-        .progress-card.completed .progress-number {
-          color: #00b894;
-        }
-
-        .progress-card.in-progress .progress-number {
-          color: #fdcb6e;
-        }
-
-        .progress-card.failed .progress-number {
-          color: #e17055;
-        }
-
-        .progress-card.remaining .progress-number {
-          color: #74b9ff;
-        }
-
-        .progress-label {
-          font-size: 0.9rem;
-          font-weight: 500;
-          color: #636e72;
-        }
-
-        .routines-section h2 {
-          color: white;
-          margin-bottom: 2rem;
-          font-size: 1.8rem;
-          text-align: center;
-        }
-
-        .routines-list {
-          display: grid;
-          gap: 1.5rem;
-        }
-
-        .routine-card {
-          background: rgba(255, 255, 255, 0.95);
-          backdrop-filter: blur(10px);
-          border-radius: 16px;
-          padding: 1.5rem;
-          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-          transition: transform 0.3s ease;
-        }
-
-        .routine-card:hover {
-          transform: translateY(-2px);
-        }
-
-        .today-highlight {
-          border: 3px solid #00b894;
-          background: rgba(0, 184, 148, 0.05);
-          box-shadow: 0 8px 32px rgba(0, 184, 148, 0.2);
-        }
-
-        .future {
-          background: rgba(255, 255, 255, 0.7);
-        }
-
-        .auto-failed {
-          border: 2px solid #e17055;
-          background: rgba(225, 112, 85, 0.05);
-        }
-
-        .routine-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 1rem;
-        }
-
-        .routine-date-info {
-          display: flex;
-          align-items: center;
-          gap: 1rem;
-        }
-
-        .routine-day {
-          background: #6c5ce7;
-          color: white;
-          padding: 0.3rem 0.8rem;
-          border-radius: 12px;
-          font-size: 0.8rem;
-          font-weight: 600;
-        }
-
-        .routine-date {
-          color: #636e72;
-          font-weight: 500;
-        }
-
-        .today-badge {
-          background: #00b894;
-          color: white;
-          padding: 0.3rem 0.8rem;
-          border-radius: 12px;
-          font-size: 0.8rem;
-          font-weight: 600;
-          animation: pulse 2s infinite;
-        }
-
-        .future-badge {
-          background: #74b9ff;
-          color: white;
-          padding: 0.3rem 0.8rem;
-          border-radius: 12px;
-          font-size: 0.8rem;
-          font-weight: 600;
-        }
-
-        @keyframes pulse {
-          0% {
-            box-shadow: 0 0 0 0 rgba(0, 184, 148, 0.7);
-          }
-          70% {
-            box-shadow: 0 0 0 10px rgba(0, 184, 148, 0);
-          }
-          100% {
-            box-shadow: 0 0 0 0 rgba(0, 184, 148, 0);
-          }
-        }
-
-        .routine-status-badge {
-          padding: 0.5rem 1rem;
-          border-radius: 20px;
-          color: white;
-          font-size: 0.8rem;
-          font-weight: 600;
-        }
-
-        .routine-activity {
-          font-size: 1.1rem;
-          font-weight: 600;
-          color: #2d3436;
-          margin-bottom: 1rem;
-        }
-
-        .routine-meta {
-          display: flex;
-          gap: 1rem;
-          margin-bottom: 1rem;
-          color: #636e72;
-          font-size: 0.9rem;
-        }
-
-        .routine-feedback {
-          background: #f8f9fa;
-          padding: 1rem;
-          border-radius: 8px;
-          margin-bottom: 1rem;
-          border-left: 4px solid #74b9ff;
-        }
-
-        .routine-actions {
-          background: rgba(108, 92, 231, 0.05);
-          padding: 1.5rem;
-          border-radius: 12px;
-          border: 1px solid rgba(108, 92, 231, 0.1);
-        }
-
-        .actions-title {
-          margin: 0 0 1rem 0;
-          font-weight: 600;
-          color: #2d3436;
-          text-align: center;
-        }
-
-        .status-buttons {
-          display: flex;
-          gap: 0.8rem;
-          justify-content: center;
-        }
-
-        .status-btn {
-          padding: 0.8rem 1.5rem;
-          border: none;
-          border-radius: 8px;
-          cursor: pointer;
-          font-weight: 600;
-          transition: all 0.3s ease;
-          font-size: 0.9rem;
-        }
-
-        .status-btn.completed {
-          background: #00b894;
-          color: white;
-        }
-
-        .status-btn.completed:hover {
-          background: #00a085;
-          transform: translateY(-1px);
-        }
-
-        .status-btn.in-progress {
-          background: #fdcb6e;
-          color: white;
-        }
-
-        .status-btn.in-progress:hover {
-          background: #e17055;
-          transform: translateY(-1px);
-        }
-
-        .status-btn.failed {
-          background: #e17055;
-          color: white;
-        }
-
-        .status-btn.failed:hover {
-          background: #d63031;
-          transform: translateY(-1px);
-        }
-
-        .status-btn:disabled {
-          opacity: 0.6;
-          cursor: not-allowed;
-          transform: none;
-        }
-
-        .future-notice,
-        .auto-failed-notice {
-          background: #f8f9fa;
-          padding: 1rem;
-          border-radius: 8px;
-          margin-top: 1rem;
-          text-align: center;
-          font-size: 0.9rem;
-        }
-
-        .future-notice {
-          border-left: 4px solid #74b9ff;
-          color: #2980b9;
-        }
-
-        .auto-failed-notice {
-          border-left: 4px solid #e17055;
-          color: #c0392b;
-        }
-
-        .loading-container,
-        .error-container {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          min-height: 100vh;
-          color: white;
-          text-align: center;
-        }
-
-        .loading-spinner {
-          width: 50px;
-          height: 50px;
-          border: 3px solid rgba(255, 255, 255, 0.3);
-          border-top: 3px solid white;
-          border-radius: 50%;
-          animation: spin 1s linear infinite;
-          margin-bottom: 1rem;
-        }
-
-        @keyframes spin {
-          0% {
-            transform: rotate(0deg);
-          }
-          100% {
-            transform: rotate(360deg);
-          }
-        }
-
-        .empty-routines {
-          text-align: center;
-          padding: 3rem;
-          background: rgba(255, 255, 255, 0.9);
-          border-radius: 16px;
-          color: #636e72;
-          font-size: 1.1rem;
-        }
-
-        @media (max-width: 768px) {
-          .goal-summary {
-            grid-template-columns: 1fr;
-          }
-
-          .progress-cards {
-            grid-template-columns: repeat(2, 1fr);
-          }
-
-          .header-content {
-            flex-direction: column;
-            gap: 1rem;
-          }
-
-          .status-buttons {
-            flex-direction: column;
-          }
-
-          .routine-header {
-            flex-direction: column;
-            gap: 1rem;
-            align-items: flex-start;
-          }
-        }
-      `}</style>
     </div>
   );
 };
