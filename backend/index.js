@@ -133,52 +133,43 @@ function parseAIRoutineToDaily(aiRoutine, goalId, targetDate) {
   console.log(`목표일: ${target}`);
   console.log(`총 ${totalDays}일간의 루틴을 생성합니다.`);
 
-  // 각 일차별 루틴 추출
+  // "일일 계획:" 섹션 찾기
+  const dailyPlanMatch = aiRoutine.match(
+    /일일\s*계획:\s*([\s\S]*?)(?=추가\s*조언:|$)/i
+  );
+
+  if (!dailyPlanMatch) {
+    console.log("일일 계획 섹션을 찾을 수 없습니다. 기본 루틴을 생성합니다.");
+    return createDefaultRoutines(goalId, totalDays, todayDate);
+  }
+
+  const dailyPlanText = dailyPlanMatch[1];
+  console.log("추출된 일일 계획 텍스트:", dailyPlanText);
+
+  // 각 일차별 루틴 추출을 위한 개선된 로직
+  const dayBlocks = parseDayBlocks(dailyPlanText, totalDays);
+
   for (let day = 1; day <= totalDays; day++) {
-    // 더 유연한 정규식 패턴 사용
-    const patterns = [
-      new RegExp(
-        `${day}\\. ${day}일차:\\s*([^(\\n]+)\\(예상 소요시간:\\s*(\\d+)분\\)`,
-        "i"
-      ),
-      new RegExp(
-        `${day}일차:\\s*([^(\\n]+)\\(예상 소요시간:\\s*(\\d+)분\\)`,
-        "i"
-      ),
-      new RegExp(
-        `${day}\\. \\s*([^(\\n]+)\\(예상 소요시간:\\s*(\\d+)분\\)`,
-        "i"
-      ),
-      new RegExp(`${day}\\. ${day}일차:\\s*([^(\\n]+)\\((\\d+)분\\)`, "i"),
-    ];
+    const dayBlock = dayBlocks[day - 1];
 
-    let match = null;
-    for (const pattern of patterns) {
-      match = aiRoutine.match(pattern);
-      if (match) break;
-    }
-
-    if (match) {
-      const activity = match[1].trim();
-      const estimatedDuration = parseInt(match[2]);
-
-      // 각 일차에 해당하는 날짜 계산 (한국 시간 기준)
+    if (dayBlock) {
+      // 해당 일차에 해당하는 날짜 계산
       const routineDate = new Date(todayDate);
       routineDate.setDate(todayDate.getDate() + (day - 1));
 
       const routine = {
         goal_id: goalId,
         date: routineDate.toISOString().split("T")[0],
-        activity: activity,
-        estimated_duration: estimatedDuration,
+        activity: dayBlock.activity,
+        estimated_duration: dayBlock.duration,
       };
 
       console.log(`${day}일차 파싱 결과:`, routine);
       routines.push(routine);
     } else {
-      console.log(`${day}일차 파싱 실패, 패턴을 찾을 수 없습니다`);
+      console.log(`${day}일차 파싱 실패, 기본 루틴 생성`);
 
-      // 패턴을 찾지 못했을 때 기본 루틴 생성
+      // 기본 루틴 생성
       const routineDate = new Date(todayDate);
       routineDate.setDate(todayDate.getDate() + (day - 1));
 
@@ -186,7 +177,7 @@ function parseAIRoutineToDaily(aiRoutine, goalId, targetDate) {
         goal_id: goalId,
         date: routineDate.toISOString().split("T")[0],
         activity: `${day}일차 활동 (상세 계획 필요)`,
-        estimated_duration: 30, // 기본값
+        estimated_duration: 30,
       };
 
       routines.push(routine);
@@ -194,6 +185,129 @@ function parseAIRoutineToDaily(aiRoutine, goalId, targetDate) {
   }
 
   console.log("최종 파싱된 루틴들:", routines);
+  return routines;
+}
+
+// 일차별 블록을 파싱하는 함수
+function parseDayBlocks(dailyPlanText, totalDays) {
+  const dayBlocks = [];
+
+  // 다양한 일차 표기 패턴에 대응
+  for (let day = 1; day <= totalDays; day++) {
+    let dayBlock = null;
+
+    // 패턴 1: "1. 1일차:" 형태
+    let pattern = new RegExp(
+      `${day}\\.\\s*${day}일차[:]?([\\s\\S]*?)(?=${day + 1}\\.\\s*${
+        day + 1
+      }일차|추가\\s*조언|$)`,
+      "i"
+    );
+    let match = dailyPlanText.match(pattern);
+
+    if (!match) {
+      // 패턴 2: "1일차:" 형태
+      pattern = new RegExp(
+        `${day}일차[:]?([\\s\\S]*?)(?=${day + 1}일차|추가\\s*조언|$)`,
+        "i"
+      );
+      match = dailyPlanText.match(pattern);
+    }
+
+    if (!match) {
+      // 패턴 3: 단순히 숫자로 시작하는 형태 "1."
+      pattern = new RegExp(
+        `${day}\\.([\\s\\S]*?)(?=${day + 1}\\.|추가\\s*조언|$)`,
+        "i"
+      );
+      match = dailyPlanText.match(pattern);
+    }
+
+    if (match) {
+      const content = match[1].trim();
+      dayBlock = parseActivityAndDuration(content);
+      console.log(`${day}일차 원본 내용:`, content);
+      console.log(`${day}일차 파싱된 블록:`, dayBlock);
+    }
+
+    dayBlocks.push(dayBlock);
+  }
+
+  return dayBlocks;
+}
+
+// 활동 내용과 소요시간을 추출하는 함수
+function parseActivityAndDuration(content) {
+  // 여러 줄로 된 복잡한 내용 처리
+  const lines = content
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  let activities = [];
+  let totalDuration = 0;
+  let foundDurations = [];
+
+  for (const line of lines) {
+    // 소요시간 패턴 추출: (예상 소요시간: 60분), (60분), 등
+    const durationMatches = line.match(
+      /\((?:예상\s*)?소요시간[:\s]*(\d+)분\)/gi
+    );
+
+    if (durationMatches) {
+      for (const durationMatch of durationMatches) {
+        const duration = parseInt(durationMatch.match(/(\d+)분/)[1]);
+        foundDurations.push(duration);
+        totalDuration += duration;
+      }
+    }
+
+    // 활동 내용 추출 (소요시간 부분 제거)
+    let activityText = line
+      .replace(/\((?:예상\s*)?소요시간[:\s]*\d+분\)/gi, "")
+      .trim();
+    activityText = activityText.replace(/^[-\s]+/, "").trim(); // 시작 부분의 - 제거
+
+    if (activityText && activityText.length > 0) {
+      activities.push(activityText);
+    }
+  }
+
+  // 활동이 없으면 원본 텍스트의 첫 100자 사용
+  if (activities.length === 0) {
+    const firstLine = lines[0] || content;
+    activities.push(firstLine.substring(0, 100));
+  }
+
+  // 소요시간이 없으면 기본값 사용
+  if (totalDuration === 0) {
+    totalDuration = 30;
+  }
+
+  return {
+    activity: activities.join(". "),
+    duration: totalDuration,
+  };
+}
+
+// 기본 루틴 생성 함수
+function createDefaultRoutines(goalId, totalDays, todayDate) {
+  const routines = [];
+
+  for (let day = 1; day <= totalDays; day++) {
+    const routineDate = new Date(todayDate);
+    routineDate.setDate(todayDate.getDate() + (day - 1));
+
+    const routine = {
+      goal_id: goalId,
+      date: routineDate.toISOString().split("T")[0],
+      activity: `${day}일차 활동 (상세 계획 필요)`,
+      estimated_duration: 30,
+    };
+
+    routines.push(routine);
+  }
+
   return routines;
 }
 

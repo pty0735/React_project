@@ -6,7 +6,7 @@ const GoalDetail = ({ goalId, user, onLogout, onBack }) => {
   const [goalDetail, setGoalDetail] = useState(null);
   const [loading, setLoading] = useState(true);
   const [updatingRoutine, setUpdatingRoutine] = useState(null);
-  const [deletingRoutine, setDeletingRoutine] = useState(null);
+  const [deletingGoal, setDeletingGoal] = useState(false);
 
   useEffect(() => {
     fetchGoalDetail();
@@ -45,24 +45,25 @@ const GoalDetail = ({ goalId, user, onLogout, onBack }) => {
     }
   };
 
-  const handleDeleteRoutine = async (routineId) => {
-    if (deletingRoutine === routineId) return;
+  const handleDeleteGoal = async () => {
+    if (deletingGoal) return;
 
-    const confirmDelete = window.confirm("이 루틴을 삭제하시겠습니까?");
+    const confirmDelete = window.confirm(
+      `"${goal.description}" 목표를 완전히 삭제하시겠습니까?\n모든 루틴과 진행상황이 삭제되며 복구할 수 없습니다.`
+    );
     if (!confirmDelete) return;
 
-    setDeletingRoutine(routineId);
+    setDeletingGoal(true);
 
     try {
-      await axios.delete(`/api/routines/${routineId}`);
-      alert("루틴이 삭제되었습니다.");
-      // 삭제 후 다시 조회
-      await fetchGoalDetail();
+      await axios.delete(`/api/goals/${goalId}`);
+      alert("목표가 삭제되었습니다.");
+      onBack(); // 대시보드로 돌아가기
     } catch (error) {
-      console.error("루틴 삭제 실패:", error);
-      alert(error.response?.data?.error || "루틴 삭제에 실패했습니다");
+      console.error("목표 삭제 실패:", error);
+      alert(error.response?.data?.error || "목표 삭제에 실패했습니다");
     } finally {
-      setDeletingRoutine(null);
+      setDeletingGoal(false);
     }
   };
 
@@ -175,6 +176,14 @@ const GoalDetail = ({ goalId, user, onLogout, onBack }) => {
             </div>
           </div>
           <div className="header-right">
+            <button
+              onClick={handleDeleteGoal}
+              disabled={deletingGoal}
+              className="delete-goal-btn"
+              title="목표 삭제"
+            >
+              {deletingGoal ? "삭제중..." : "🗑️ 목표 삭제"}
+            </button>
             <button onClick={onLogout} className="logout-btn">
               로그아웃
             </button>
@@ -263,14 +272,7 @@ const GoalDetail = ({ goalId, user, onLogout, onBack }) => {
                       >
                         {getStatusText(routine.status, routine.routine_status)}
                       </div>
-                      <button
-                        className="delete-routine-btn"
-                        onClick={() => handleDeleteRoutine(routine.id)}
-                        disabled={deletingRoutine === routine.id}
-                        title="루틴 삭제"
-                      >
-                        {deletingRoutine === routine.id ? "삭제중..." : "🗑️"}
-                      </button>
+                      {/* 삭제 버튼 제거 */}
                     </div>
                   </div>
 

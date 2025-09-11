@@ -36,6 +36,7 @@
   --error-50: #fef2f2;
   --error-500: #ef4444;
   --error-600: #dc2626;
+  --error-700: #b91c1c;
 
   /* Spacing */
   --space-1: 0.25rem;
@@ -1104,4 +1105,27 @@ body {
 
 .goal-category-badge[data-category="생활"] {
   background: var(--success-500);
+}
+.delete-goal-btn {
+  background: var(--error-500);
+  color: white;
+  border: none;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.delete-goal-btn:hover {
+  background: var(--error-600);
+}
+
+.delete-goal-btn:disabled {
+  background: var(--gray-400);
+  cursor: not-allowed;
 }
